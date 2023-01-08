@@ -1,0 +1,73 @@
+version: '2.4'
+services:
+
+  # flower:
+  #   image: mher/flower
+  #   command: celery -A app --broker=sqs://foo:bar@localstack:4566// flower --port=5555
+  #   ports:
+  #     - 5555:5555
+  #   links:
+  #     - localstack
+
+  redis:
+    image: redis:latest
+    ports:
+      - 6379:6379
+
+  localstack:
+    image: localstack/localstack:0.13.0
+    ports:
+      - "4566-4583:4566-4583"
+      - "9898:${PORT_WEB_UI-8080}"
+    environment:
+      - AWS_DEFAULT_REGION=eu-central-1
+      - SERVICES=sqs
+      - DEBUG=${DEBUG- }
+      - DATA_DIR=${DATA_DIR- }
+      - PORT_WEB_UI=${PORT_WEB_UI- }
+      - LAMBDA_EXECUTOR=${LAMBDA_EXECUTOR- }
+      - KINESIS_ERROR_PORTABILITY=${KINESIS_ERROR_PORTABILITY- }
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - ./localstack:/docker-entrypoint-initaws.d
+      - "/private/tmp/localstack:/tmp/localstack"
+      - "/private/var/run/doscker.sock:/var/run/docker.sock"
+
+  celery_base:
+    build: .
+
+    environment:
+      - BROKER=sqs://
+      - BROKER_URL=sqs://foo:bar@localstack:4566
+      - AWS_ACCESS_KEY_ID=AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY_ID=AWS_SECRET_ACCESS_KEY_ID
+      - AWS_DEFAULT_REGION=eu-central-1
+      - QUEUE_URL=http://localstack:4566/000000000000/queue1
+    env_file:
+      - .env
+    volumes:
+      - .src:/home/ca_user
+
+  worker:
+    extends:
+      service: celery_base
+    command: celery --app app worker --loglevel INFO
+    # depends_on:
+    #   - localstack
+    links:
+      - localstack
+      - redisdepends_on:
+    #   - localstack
+
+  task:
+    extends:
+      # file: doscker-compose.yml
+      service: celery_base
+    command: python -m run_task
+    links:
+      - localstack
+      - redis
+    environment:
+      - BROKER=sqs://
+      - BROKER_URL=sqs://foo:bar@localstack:4566
+    
